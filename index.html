@@ -5488,7 +5488,7 @@ function micSync(){
 }
 async function micOffer(uid){
   if(!__mic.stream || !__bd.me) return;
-  const pc=new RTCPeerConnection({iceServers:MIC_ICE}); __mic.pcs[uid]=pc; pc._q=[];
+  const pc=new RTCPeerConnection({iceServers:MIC_ICE}); __mic.pcs[uid]=pc; pc._q=[]; pc.oniceconnectionstatechange=()=>showToast('DEBUG معلم ICE: '+pc.iceConnectionState,pc.iceConnectionState==='failed'?'err':'ok');
   __mic.stream.getAudioTracks().forEach(t=>pc.addTrack(t,__mic.stream));
   pc.onicecandidate=e=>{ if(e.candidate) bdSend('rtc',{to:uid,from:__bd.me.uid,k:'ice',d:e.candidate.toJSON()}); };
   pc.onconnectionstatechange=()=>{ const cs=pc.connectionState; if(cs==='failed'||cs==='closed'||cs==='disconnected'){ setTimeout(()=>{ if(__mic.pcs[uid]===pc && pc.connectionState!=='connected'){ micDrop(uid); micSync(); } },cs==='disconnected'?4000:500); } };
@@ -5514,9 +5514,10 @@ async function micSignal(d){
     }
     if(d.k==='offer'){
       micClose();
-      const pc=new RTCPeerConnection({iceServers:MIC_ICE}); __mic.pc=pc;
+      showToast('DEBUG: پیشنهاد صدا از معلم رسید','ok'); const pc=new RTCPeerConnection({iceServers:MIC_ICE}); __mic.pc=pc;
       pc.onicecandidate=e=>{ if(e.candidate) bdSend('rtc',{to:d.from,from:__bd.me.uid,k:'ice',d:e.candidate.toJSON()}); };
-      pc.ontrack=e=>micPlay(e.streams[0]||new MediaStream([e.track]));
+      pc.ontrack=e=>{ showToast('DEBUG: صدا رسید','ok'); micPlay(e.streams[0]||new MediaStream([e.track])); };
+      pc.oniceconnectionstatechange=()=>showToast('DEBUG دانش‌آموز ICE: '+pc.iceConnectionState,pc.iceConnectionState==='failed'?'err':'ok');
       await pc.setRemoteDescription(d.d);
       __mic.q.splice(0).forEach(c=>pc.addIceCandidate(c).catch(()=>{}));
       const a=await pc.createAnswer(); await pc.setLocalDescription(a);
