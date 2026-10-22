@@ -5304,8 +5304,12 @@ const MIC_ICE=[
   {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp','turns:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}
 ];
 window.__mlog=[];
+try{ if(/[?&]micdebug=1/.test(location.search)) window.__MIC_DEBUG=true; }catch(e){}
+/* لاگ نوع candidateها: host / srflx / relay. اگر relay هیچ‌وقت ساخته نشود یعنی TURN در دسترس نیست */
+function micCand(who,c){ try{ if(!c){ micLog(who+' gather: end'); return; } const m=/ typ (\w+)/.exec(c.candidate||''); micLog(who+' cand: '+(m?m[1]:'?')+' '+((c.protocol)||'')); }catch(e){} }
+function micWatch(who,pc){ try{ pc.addEventListener('icegatheringstatechange',()=>micLog(who+' gathering='+pc.iceGatheringState)); pc.addEventListener('iceconnectionstatechange',()=>micLog(who+' ice='+pc.iceConnectionState)); pc.addEventListener('icecandidateerror',e=>micLog(who+' ICE error '+(e.errorCode||'')+' '+(e.url||''))); }catch(e){} }
 function micLog(m){
-  try{
+  try{ if(!window.__MIC_DEBUG){ console.log('[mic]',m); return; }
     __mlog.push(new Date().toTimeString().slice(0,8)+' '+m); if(__mlog.length>9) __mlog.shift();
     let d=document.getElementById('micLogBox');
     if(!d){ d=document.createElement('div'); d.id='micLogBox'; d.style.cssText='position:fixed;left:4px;bottom:70px;z-index:10000;max-width:92vw;background:rgba(0,0,0,.82);color:#7CFC9A;font:11px/1.5 monospace;padding:6px 8px;border-radius:8px;direction:ltr;text-align:left;pointer-events:none;white-space:pre-wrap'; document.body.appendChild(d); }
@@ -5499,9 +5503,10 @@ function micSync(){
 async function micOffer(uid){
   if(!__mic.stream || !__bd.me) return;
   micLog('sending offer');
-  const pc=new RTCPeerConnection({iceServers:MIC_ICE}); __mic.pcs[uid]=pc; pc._q=[]; pc.oniceconnectionstatechange=()=>showToast('DEBUG معلم ICE: '+pc.iceConnectionState,pc.iceConnectionState==='failed'?'err':'ok');
+  const pc=new RTCPeerConnection({iceServers:MIC_ICE}); __mic.pcs[uid]=pc; pc._q=[]; pc.oniceconnectionstatechange=()=>{ if(pc.iceConnectionState==='failed') console.warn('mic ICE failed (teacher)'); };
   __mic.stream.getAudioTracks().forEach(t=>pc.addTrack(t,__mic.stream));
-  pc.onicecandidate=e=>{ if(e.candidate) bdSend('rtc',{to:uid,from:__bd.me.uid,k:'ice',d:e.candidate.toJSON()}); };
+  micWatch('T',pc);
+  pc.onicecandidate=e=>{ micCand('T',e.candidate); if(e.candidate) bdSend('rtc',{to:uid,from:__bd.me.uid,k:'ice',d:e.candidate.toJSON()}); };
   pc.onconnectionstatechange=()=>{ const cs=pc.connectionState; if(cs==='failed'||cs==='closed'||cs==='disconnected'){ setTimeout(()=>{ if(__mic.pcs[uid]===pc && pc.connectionState!=='connected'){ micDrop(uid); micSync(); } },cs==='disconnected'?4000:500); } };
   try{ const o=await pc.createOffer(); await pc.setLocalDescription(o); bdSend('rtc',{to:uid,from:__bd.me.uid,k:'offer',d:{type:o.type,sdp:o.sdp}}); }
   catch(e){ micDrop(uid); }
@@ -5528,9 +5533,10 @@ async function micSignal(d){
     if(d.k==='offer'){
       micClose();
       const pc=new RTCPeerConnection({iceServers:MIC_ICE}); __mic.pc=pc;
-      pc.onicecandidate=e=>{ if(e.candidate) bdSend('rtc',{to:d.from,from:__bd.me.uid,k:'ice',d:e.candidate.toJSON()}); };
-      pc.ontrack=e=>{ showToast('DEBUG: صدا رسید','ok'); micPlay(e.streams[0]||new MediaStream([e.track])); };
-      pc.oniceconnectionstatechange=()=>showToast('DEBUG دانش‌آموز ICE: '+pc.iceConnectionState,pc.iceConnectionState==='failed'?'err':'ok');
+      micWatch('S',pc);
+      pc.onicecandidate=e=>{ micCand('S',e.candidate); if(e.candidate) bdSend('rtc',{to:d.from,from:__bd.me.uid,k:'ice',d:e.candidate.toJSON()}); };
+      pc.ontrack=e=>{ micLog('S track received'); micPlay(e.streams[0]||new MediaStream([e.track])); };
+      pc.oniceconnectionstatechange=()=>{ if(pc.iceConnectionState==='failed') console.warn('mic ICE failed (student)'); };
       await pc.setRemoteDescription(d.d);
       __mic.q.splice(0).forEach(c=>pc.addIceCandidate(c).catch(()=>{}));
       const a=await pc.createAnswer(); await pc.setLocalDescription(a);
