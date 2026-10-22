@@ -5303,6 +5303,16 @@ const MIC_ICE=[
   /* TURN: بدون این، روی بیشتر شبکه‌های موبایل/مدرسه صدا وصل نمی‌شود. برای پایداری، سرور TURN خودت را جایگزین کن */
   {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp','turns:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}
 ];
+window.__mlog=[];
+function micLog(m){
+  try{
+    __mlog.push(new Date().toTimeString().slice(0,8)+' '+m); if(__mlog.length>9) __mlog.shift();
+    let d=document.getElementById('micLogBox');
+    if(!d){ d=document.createElement('div'); d.id='micLogBox'; d.style.cssText='position:fixed;left:4px;bottom:70px;z-index:10000;max-width:92vw;background:rgba(0,0,0,.82);color:#7CFC9A;font:11px/1.5 monospace;padding:6px 8px;border-radius:8px;direction:ltr;text-align:left;pointer-events:none;white-space:pre-wrap'; document.body.appendChild(d); }
+    d.textContent=__mlog.join('\n');
+  }catch(e){}
+}
+setTimeout(()=>micLog('version v3-debug loaded'),500);
 const SILENT_WAV='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
 function micEl(){
   let a=document.getElementById('crAudio');
@@ -5459,7 +5469,7 @@ async function micStart(){
   try{ __mic.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}}); }
   catch(e){ showToast('اجازه‌ی میکروفن داده نشد؛ از تنظیمات مرورگر فعالش کن.','err'); return; }
   if(!__bd.ch){ __mic.stream.getTracks().forEach(t=>t.stop()); __mic.stream=null; return; }
-  __mic.on=true; bdTrack(); micSync(); showToast('میکروفن روشن شد؛ دانش‌آموزها صدات رو می‌شنوند 🎙','ok');
+  __mic.on=true; bdTrack(); micLog('teacher mic ON, students='+Object.values(__bd.peers).filter(p=>p.role==='student').length+', peers='+Object.keys(__bd.peers).length); micSync(); showToast('میکروفن روشن شد؛ دانش‌آموزها صدات رو می‌شنوند 🎙','ok');
 }
 function micStop(){
   if(__mic.stream){ __mic.stream.getTracks().forEach(t=>t.stop()); __mic.stream=null; }
@@ -5483,11 +5493,12 @@ function micSync(){
       });
       Object.keys(__mic.pcs).forEach(u=>{ if(!st.some(p=>p.uid===u)) micDrop(u); });
     }
-  } else if(!Object.values(__bd.peers).some(p=>p.role==='teacher'&&p.mic)) micClose();
+  } else { const tm=Object.values(__bd.peers).some(p=>p.role==='teacher'&&p.mic); if(tm!==window.__lastTm){ window.__lastTm=tm; micLog('teacher mic seen='+tm+', peers='+Object.keys(__bd.peers).length); } if(!tm) micClose(); }
   micUI();
 }
 async function micOffer(uid){
   if(!__mic.stream || !__bd.me) return;
+  micLog('sending offer');
   const pc=new RTCPeerConnection({iceServers:MIC_ICE}); __mic.pcs[uid]=pc; pc._q=[]; pc.oniceconnectionstatechange=()=>showToast('DEBUG معلم ICE: '+pc.iceConnectionState,pc.iceConnectionState==='failed'?'err':'ok');
   __mic.stream.getAudioTracks().forEach(t=>pc.addTrack(t,__mic.stream));
   pc.onicecandidate=e=>{ if(e.candidate) bdSend('rtc',{to:uid,from:__bd.me.uid,k:'ice',d:e.candidate.toJSON()}); };
@@ -5504,7 +5515,9 @@ function micPlay(stream){
   });
 }
 async function micSignal(d){
-  if(!d || !__bd.me || d.to!==__bd.me.uid) return;
+  if(!d || !__bd.me) return;
+  if(d.to!==__bd.me.uid){ return; }
+  micLog('rtc recv '+d.k+' ('+(__bd.teacher?'teacher':'student')+')');
   try{
     if(__bd.teacher){
       const pc=__mic.pcs[d.from]; if(!pc) return;
@@ -5514,7 +5527,7 @@ async function micSignal(d){
     }
     if(d.k==='offer'){
       micClose();
-      showToast('DEBUG: پیشنهاد صدا از معلم رسید','ok'); const pc=new RTCPeerConnection({iceServers:MIC_ICE}); __mic.pc=pc;
+      const pc=new RTCPeerConnection({iceServers:MIC_ICE}); __mic.pc=pc;
       pc.onicecandidate=e=>{ if(e.candidate) bdSend('rtc',{to:d.from,from:__bd.me.uid,k:'ice',d:e.candidate.toJSON()}); };
       pc.ontrack=e=>{ showToast('DEBUG: صدا رسید','ok'); micPlay(e.streams[0]||new MediaStream([e.track])); };
       pc.oniceconnectionstatechange=()=>showToast('DEBUG دانش‌آموز ICE: '+pc.iceConnectionState,pc.iceConnectionState==='failed'?'err':'ok');
