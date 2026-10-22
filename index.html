@@ -5304,7 +5304,7 @@ const MIC_ICE=[
   {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp','turns:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}
 ];
 window.__mlog=[];
-try{ if(/[?&]micdebug=1/.test(location.search)) window.__MIC_DEBUG=true; }catch(e){}
+try{ if(/micdebug/.test(location.search+location.hash+document.referrer) || localStorage.getItem('micdebug')==='1'){ window.__MIC_DEBUG=true; localStorage.setItem('micdebug','1'); } if(/nomicdebug/.test(location.search+location.hash)){ window.__MIC_DEBUG=false; localStorage.removeItem('micdebug'); } }catch(e){}
 /* لاگ نوع candidateها: host / srflx / relay. اگر relay هیچ‌وقت ساخته نشود یعنی TURN در دسترس نیست */
 function micCand(who,c){ try{ if(!c){ micLog(who+' gather: end'); return; } const m=/ typ (\w+)/.exec(c.candidate||''); micLog(who+' cand: '+(m?m[1]:'?')+' '+((c.protocol)||'')); }catch(e){} }
 function micWatch(who,pc){ try{ pc.addEventListener('icegatheringstatechange',()=>micLog(who+' gathering='+pc.iceGatheringState)); pc.addEventListener('iceconnectionstatechange',()=>micLog(who+' ice='+pc.iceConnectionState)); pc.addEventListener('icecandidateerror',e=>micLog(who+' ICE error '+(e.errorCode||'')+' '+(e.url||''))); }catch(e){} }
